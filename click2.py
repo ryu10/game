@@ -9,7 +9,7 @@ from gpiozero import LED, Button
 pygame.init()
 
 # Assign gpio pins
-gpio_led = 17    # not implemented yet
+gpio_led = 17
 gpio_main_sw = 5
 gpio_start_sw = 6
 
