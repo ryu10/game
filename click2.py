@@ -3,9 +3,40 @@ import sys
 import time
 import random
 import math
+from gpiozero import LED, Button
 
 # Initialize the game
 pygame.init()
+
+# Assign gpio pins
+gpio_led = 17    # not implemented yet
+gpio_main_sw = 5
+gpio_start_sw = 6
+
+
+# Init LED
+led = LED(gpio_led)
+led.off()
+
+# Init Sws
+main_sw = Button(gpio_main_sw, pull_up=True)
+start_sw = Button(gpio_start_sw, pull_up=True)
+time.sleep(0.1)
+
+# BtnDn events
+MAIN_BTN_DOWN_EVENT = pygame.event.custom_type()
+START_BTN_DOWN_EVENT = pygame.event.custom_type()
+
+# Button down callbacks
+def main_button_down_event():
+    pygame.event.post(pygame.event.Event(MAIN_BTN_DOWN_EVENT))
+
+def start_button_down_event():
+    pygame.event.post(pygame.event.Event(START_BTN_DOWN_EVENT))
+
+# Define BtnDn callback assignments
+main_sw.when_pressed = main_button_down_event
+start_sw.when_pressed = start_button_down_event
 
 # Set screen dimensions
 WIDTH, HEIGHT = 800, 600
@@ -452,6 +483,7 @@ while running:
         if remaining_time <= 0:
             game_active = False
             remaining_time = 0
+            led.off()
             # ハイスコアの更新とお祝いエフェクトの発動
             if click_count > high_score:
                 high_score = click_count
@@ -460,7 +492,23 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+
+        elif event.type == MAIN_BTN_DOWN_EVENT:
+            if game_active:
+                # ゲームプレイ中のクリック処理
+                click_count += 1
+                create_particles(mouse_pos[0], mouse_pos[1])  # クリック位置でパーティクルを作成
         
+        elif event.type == START_BTN_DOWN_EVENT:
+                # ゲーム開始
+                game_active = True
+                click_count = 0
+                start_time = time.time()
+                remaining_time = 30
+                particles.clear()  # 既存のパーティクルをクリア
+                mouse_pos = (WIDTH/2, HEIGHT/2) # とにかく座標を設定
+                led.blink(on_time=1, off_time=1)
+
         elif event.type == pygame.MOUSEBUTTONDOWN:
             mouse_pos = pygame.mouse.get_pos()
             
@@ -475,10 +523,17 @@ while running:
                 start_time = time.time()
                 remaining_time = 30
                 particles.clear()  # 既存のパーティクルをクリア
+                led.blink(on_time=1, off_time=1)
     
     # ゲーム画面の描画
     draw_game()
-    
+    # 徐々に点滅を速くする。描画が重いときは効かない
+    if remaining_time == 15:
+        led.blink(on_time=0.5, off_time=0.5)
+
+    if remaining_time == 2:
+        led.blink(on_time=0.05, off_time=0.05)
+
     pygame.display.flip()
     clock.tick(60)  # FPSの設定
 
