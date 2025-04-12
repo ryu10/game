@@ -12,6 +12,14 @@ pip install pygame
 python click.py
 ```
 
+＃ click game with external buttons
+
+```
+python click2.py
+```
+
+[hardware description](click2.md)
+
 # puyo
 puyo
 

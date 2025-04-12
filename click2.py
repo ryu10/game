@@ -500,6 +500,7 @@ while running:
                 create_particles(mouse_pos[0], mouse_pos[1])  # クリック位置でパーティクルを作成
         
         elif event.type == START_BTN_DOWN_EVENT:
+            if not game_active:
                 # ゲーム開始
                 game_active = True
                 click_count = 0
