@@ -1,3 +1,7 @@
+# rp2040 rotary encoder (RE)
+# This micropython code is for the REs connected to a Raspberry Pi Pico
+# Orig: by Yuya Kato https://zenn.dev/yuyakato/articles/8c148a11a8bbb7
+
 from machine import Pin
 import utime
 import sys
