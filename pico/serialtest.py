@@ -11,7 +11,7 @@ print("Serial port opened")
 while True:
     if ser.in_waiting > 0:
         print("reading")
-        line = ser.readline().decode('utf-8').rs trip()
+        line = ser.readline().decode('utf-8').rstrip()
         print(line)
         record = json.loads(line)
         if record['event'] == 'change':
