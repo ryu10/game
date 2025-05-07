@@ -116,16 +116,19 @@ while True:
         player_paddle.move_down()
 
     # Read serial input for paddle control
-    if ser.in_waiting > 0:
-        line = ser.readline().decode('utf-8').rstrip()
-        record = json.loads(line)
-        if record['event'] == 'change':
-            if record['state'].get('re0') != None:
-                direction = record['state']['re0']['direction']
-                if direction == "CW":
-                    player_paddle.move_down()
-                elif direction == "CCW":
-                    player_paddle.move_up()
+    if ser.in_waiting > 70:
+        try:
+            line = ser.readline().decode('utf-8').rstrip()
+            record = json.loads(line)
+            if record['event'] == 'change':
+                if record['state'].get('re0') != None:
+                    direction = record['state']['re0']['direction']
+                    if direction == "CW":
+                        player_paddle.move_down()
+                    elif direction == "CCW":
+                        player_paddle.move_up()
+        except json.JSONDecodeError:
+            ser.flush()  # Clear the serial buffer if JSON decoding fails
 
     # Computer AI (track the ball)
     if computer_paddle.rect.centery < ball.rect.centery:
