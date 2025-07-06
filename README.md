@@ -12,7 +12,7 @@ pip install pygame
 python click.py
 ```
 
-＃ click game with external buttons
+# click game with external buttons
 
 ```
 python click2.py
