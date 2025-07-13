@@ -28,8 +28,8 @@ class LedArray:
         self.n = self.n0 + self.n1  # inner 24 + outer 32
 
         # interval
-        self.interval = 0.07
-        self.interval2 = 0.4
+        self.interval = 0.04
+        self.interval2 = 0.12
 
         self.data_pin = machine.Pin(5, machine.Pin.OUT)  # Use GPIO 5 for data pin
 
@@ -127,7 +127,60 @@ class LedArray:
         with self.lock:
             self.go = True
 
-    def run_pattern1(self): # slow effect
+    def run_pattern1(self): # Slow effect
+        global go
+        rotate_dir = 1  # 1 for clockwise, -1 for counter-clockwise
+        # fix intervals
+        if self.interval > self.interval2:
+            self.swap_intervals()
+        # define the outer and inner strips
+        outer = [len(self.colors)-1] * self.n0  # Outer strip initialized to black
+        inner = [len(self.colors)-1] * self.n1  # Inner strip initialized to black
+        # fill outer strip at 90 deg interval
+        col = random.randint(0, len(self.colors) - 2)
+        for i in range(0, self.n0, int(self.n0/4)):
+            outer[i] = col
+        # fill outer strip at 90 deg interval, with 45 deg offset
+        col = random.randint(0, len(self.colors) - 2)
+        for i in range(int(self.n0/8), self.n0, int(self.n0/4)):
+            outer[i] = col       
+        # fill inner strip at 90 deg interval
+        col = random.randint(0, len(self.colors) - 2)
+        for i in range(0, self.n1, int(self.n1/4)):
+            inner[i] = random.randint(0, len(self.colors) - 2)
+        # loop, rotate outer ring clockwise, inner ring counter-clockwise
+        while self.go:
+            sleep(self.interval) 
+            if not self.go:
+                break
+            # display outer and inner strips
+            for i in range(self.n0):
+                self.strip[i] = self.pallette[self.colors[outer[i]]]
+            for i in range(self.n1):
+                self.strip[self.n0 + i] = self.pallette[self.colors[inner[i]]]
+            self.strip.write()
+            if rotate_dir == 1:  # Rotate direction
+                # rotate outer strip clockwise
+                outer = [outer[-1]] + outer[:-1]  # Rotate outer strip clockwise
+                # rotate inner strip counter-clockwise
+                inner = inner[1:] + [inner[0]]  # Rotate inner strip counter-clockwise
+            else: # rotate outer strip counter-clockwise
+                outer = outer[1:] + [outer[0]]  # Rotate outer strip counter-clockwise
+                # rotate inner strip clockwise
+                inner = [inner[-1]] + inner[:-1]  # Rotate inner strip clockwise
+            # randomly change the direction of rotation
+            if random.randint(0, 53) == 0:  # 1/53 = 1.89%
+                rotate_dir = - rotate_dir  # Change rotation direction
+            # randomly swap intervals
+            if random.randint(0, 53) == 0:  # %
+                self.swap_intervals()
+        # Restrict the strip to off state
+        self.strip.fill((0, 0, 0))
+        self.strip.write()
+        with self.lock:
+            self.go = True
+
+    def run_pattern2(self): # medium effect
         global go
         # fix intervals
         if self.interval > self.interval2:
@@ -172,36 +225,67 @@ class LedArray:
         with self.lock:
             self.go = True
 
-
-    def run_pattern2(self): # Medium effect
+    def run_pattern3(self): # Slow effect
         global go
+        rotate_dir = 1  # 1 for clockwise, -1 for counter-clockwise
         # fix intervals
         if self.interval > self.interval2:
             self.swap_intervals()
-        col = 0  # Reset color index for pattern 0
+        l_interval = self.interval * 0.6 # speed up
+        l_interval2 = self.interval2 * 0.6 # speed up
+        # define the outer and inner strips
+        outer = [len(self.colors)-1] * self.n0  # Outer strip initialized to black
+        inner = [len(self.colors)-1] * self.n1  # Inner strip initialized to black
+        # fill outer strip at 90 deg interval
+        col = random.randint(0, len(self.colors) - 2)
+        for i in range(0, self.n0, int(self.n0/4)):
+            outer[i] = col
+        # fill outer strip at 90 deg interval, with 45 deg offset
+        col = random.randint(0, len(self.colors) - 2)
+        for i in range(int(self.n0/8), self.n0, int(self.n0/4)):
+            outer[i] = col       
+        # fill inner strip at 90 deg interval
+        col = random.randint(0, len(self.colors) - 2)
+        for i in range(0, self.n1, int(self.n1/4)):
+            inner[i] = random.randint(0, len(self.colors) - 2)
+        # loop, rotate outer ring clockwise, inner ring counter-clockwise
         while self.go:
-            # print("Running Pattern 2")
-            sleep(0.5)  # Simulate LED operation
+            sleep(l_interval) 
             if not self.go:
                 break
-        # print("Pattern 2 ended")    
+            # display outer and inner strips
+            for i in range(self.n0):
+                self.strip[i] = self.pallette[self.colors[outer[i]]]
+            for i in range(self.n1):
+                self.strip[self.n0 + i] = self.pallette[self.colors[inner[i]]]
+            # add random sparcles
+            for i in range(self.n):
+                if random.randint(0, 100) < 20: 
+                    # sparkle light at 200% brightness (val = 128)
+                    self.strip[i] = self.pallette[self.colors[random.randint(0, len(self.colors) - 2)]] * 2 
+            self.strip.write()
+            if rotate_dir == 1:  # Rotate direction
+                # rotate outer strip clockwise
+                outer = [outer[-1]] + outer[:-1]  # Rotate outer strip clockwise
+                # rotate inner strip counter-clockwise
+                inner = inner[1:] + [inner[0]]  # Rotate inner strip counter-clockwise
+            else: # rotate outer strip counter-clockwise
+                outer = outer[1:] + [outer[0]]  # Rotate outer strip counter-clockwise
+                # rotate inner strip clockwise
+                inner = [inner[-1]] + inner[:-1]  # Rotate inner strip clockwise
+            # randomly change the direction of rotation
+            if random.randint(0, 53) == 0:  # 1/53 = 1.89%
+                rotate_dir = - rotate_dir  # Change rotation direction
+            # randomly swap intervals
+            if random.randint(0, 24) == 0:  # %
+                t = l_interval
+                l_interval = l_interval2
+                l_interval2 = t
+        # Restrict the strip to off state
+        self.strip.fill((0, 0, 0))
+        self.strip.write()
         with self.lock:
             self.go = True
-
-    def run_pattern3(self): # Fast effect
-        global go
-        # fix intervals
-        if self.interval > self.interval2:
-            self.swap_intervals()
-        col = 0  # Reset color index for pattern 0
-        while self.go:             
-            # print("Running Pattern 3")
-            sleep(0.5)  # Simulate LED operation
-            if not self.go:
-                break
-        # print("Pattern 3 ended")    
-        with self.lock:
-            self.go = True  
 
     def stop(self): # erase the LED strip
         with self.lock:
