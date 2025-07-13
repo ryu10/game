@@ -68,6 +68,8 @@ celebration_active = False
 celebration_start_time = 0
 celebration_duration = 3  # seconds
 
+led_updated_time = 30  # Reset for new game
+
 # 派手なパーティクルシステム
 class Particle:
     def __init__(self, x, y, color=None, size_range=(2, 5), speed_range=(2, 5), lifetime_range=(20, 40)):
@@ -369,7 +371,7 @@ def draw_celebration_text(text, y_offset=0):
     screen.blit(scaled_surface, text_rect)
 
 def draw_game():
-    global celebration_active
+    global celebration_active, led_updated_time
     screen.fill(BLACK)
     
     if not game_active:
@@ -457,6 +459,16 @@ def draw_game():
             else:
                 draw_text("FINAL SPRINT!!", title_font, YELLOW, WIDTH//2, HEIGHT - 40)
 
+        # 残り時間に応じて点滅パターンを変更
+        if remaining_time <= 10 and led_updated_time > 10:
+                led_updated_time = 10
+                # コントローラLEDパターン変更命令
+                ser.write(json.dumps({"led": {"pattern": 2}}).encode('utf-8') + b'\n')
+        if remaining_time <= 5 and led_updated_time > 5:
+                led_updated_time = 5
+                # コントローラLEDパターン変更命令
+                ser.write(json.dumps({"led": {"pattern": 3}}).encode('utf-8') + b'\n')
+
 running = True
 while running:
     current_time = time.time()
@@ -510,6 +522,7 @@ while running:
                 click_count = 0
                 start_time = time.time()
                 remaining_time = 30
+                led_updated_time = 30
                 particles.clear()  # 既存のパーティクルをクリア
                 mouse_pos = (WIDTH/2, HEIGHT/2) # とにかく座標を設定
                 # コントローラLEDパターン変更命令
