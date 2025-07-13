@@ -84,6 +84,9 @@ class LedArray:
 
     def run_pattern0(self):  # demo pattern
         global go
+        # fix intervals
+        if self.interval > self.interval2:
+            self.swap_intervals()
         col = 0  # Reset color index for pattern 0
         while self.go:
             # print("Running Pattern 0")
@@ -94,6 +97,9 @@ class LedArray:
                 self.strip[i] = self.pallette[self.colors[col]]
                 self.strip.write()
                 sleep(self.interval)
+                # randomly swap intervals
+                if random.randint(0, 53) == 0:  # %
+                    self.swap_intervals()
                 if not self.go:
                     break
                 self.strip[i] = (0, 0, 0)  # Turn off the LED
@@ -105,6 +111,9 @@ class LedArray:
                 self.strip[i] = self.pallette[self.colors[col]]
                 self.strip.write()
                 sleep(self.interval2)
+                # randomly swap intervals
+                if random.randint(0, 53) == 0:  # %
+                    self.swap_intervals()
             for i in range(0, self.n, 4):
                 if not self.go:
                     break
@@ -120,6 +129,9 @@ class LedArray:
 
     def run_pattern1(self): # slow effect
         global go
+        # fix intervals
+        if self.interval > self.interval2:
+            self.swap_intervals()
         col = 0  # Reset color index for pattern 0
         while self.go:
             col1 = random.randint(0, len(self.colors) - 2)  # Randomly select a color
@@ -163,6 +175,9 @@ class LedArray:
 
     def run_pattern2(self): # Medium effect
         global go
+        # fix intervals
+        if self.interval > self.interval2:
+            self.swap_intervals()
         col = 0  # Reset color index for pattern 0
         while self.go:
             # print("Running Pattern 2")
@@ -175,6 +190,9 @@ class LedArray:
 
     def run_pattern3(self): # Fast effect
         global go
+        # fix intervals
+        if self.interval > self.interval2:
+            self.swap_intervals()
         col = 0  # Reset color index for pattern 0
         while self.go:             
             # print("Running Pattern 3")
