@@ -12,5 +12,7 @@
     "python.analysis.extraPaths": [
         "~/.micropico-stubs/included"
     ],
-    "micropico.syncFolder": "pico/"
+    "micropico.syncFolder": "pico/",
+    "micropico.gcBeforeUpload": true,
+    "micropico.softResetAfterUpload": false
 }

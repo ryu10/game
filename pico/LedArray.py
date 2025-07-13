@@ -184,3 +184,10 @@ class LedArray:
         # print("Pattern 3 ended")    
         with self.lock:
             self.go = True  
+
+    def stop(self): # erase the LED strip
+        with self.lock:
+            self.go = False
+        self.strip.fill((0, 0, 0))  # Turn off all LEDs
+        self.strip.write()  # Write the changes to the strip
+        # print("LED strip stopped and cleared.")
