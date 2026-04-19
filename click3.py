@@ -98,7 +98,22 @@ def save_scores():
     with open(BOARD_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
+# 外部表示装置用シリアル設定
+LEADERBOARD_DEVICE = '/dev/ttyACM1'
+
+def send_leaderboard():
+    """上位3位のスコアを外部表示装置にUSBシリアルで送信する"""
+    top3 = high_scores[:3]
+    data = {'board': [{'name': hs['name'], 'score': hs['score']} for hs in top3]}
+    payload = json.dumps(data, ensure_ascii=False) + '\n'
+    try:
+        with serial.Serial(LEADERBOARD_DEVICE, 115200, timeout=1) as lb_ser:
+            lb_ser.write(payload.encode('utf-8'))
+    except serial.SerialException:
+        pass  # 外部表示装置が未接続の場合は無視
+
 load_scores()
+send_leaderboard()
 title_angle = 0  # For title animation
 celebration_active = False
 celebration_start_time = 0
@@ -711,6 +726,7 @@ while running:
                     high_scores.sort(key=lambda x: x['score'], reverse=True)
                     del high_scores[10:]
                     save_scores()
+                    send_leaderboard()
                     name_entry_active = False
                     game_over_time = time.time()
                     input_locked_until = time.time() + 2
@@ -790,6 +806,7 @@ while running:
             high_scores.sort(key=lambda x: x['score'], reverse=True)
             del high_scores[10:]
             save_scores()
+            send_leaderboard()
             name_entry_active = False
             game_over_time = time.time()
             input_locked_until = time.time() + 2

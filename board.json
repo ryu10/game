@@ -1,6 +1,10 @@
 {
     "board": [
         {
+            "name": "RYU1",
+            "score": 214
+        },
+        {
             "name": "AAAAA",
             "score": 189
         },
@@ -35,10 +39,6 @@
         {
             "name": "SOFIA",
             "score": 61
-        },
-        {
-            "name": "LENA",
-            "score": 57
         }
     ]
 }
