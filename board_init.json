@@ -1,0 +1,14 @@
+{
+    "board": [
+        { "name": "SEIGOT",  "score": 160 },
+        { "name": "JAMES", "score":  72 },
+        { "name": "CHEN",  "score":  48 },
+        { "name": "SOFIA", "score":  61 },
+        { "name": "OMAR",  "score":  35 },
+        { "name": "LENA",  "score":  57 },
+        { "name": "RAVI",  "score":  19 },
+        { "name": "MILA",  "score":  44 },
+        { "name": "ALI",   "score":  78 },
+        { "name": "HANA",  "score":  27 }
+    ]
+}

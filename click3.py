@@ -3,6 +3,8 @@ import sys
 import time
 import random
 import math
+import os
+import shutil
 import serial
 import json
 
@@ -22,7 +24,7 @@ def start_button_down_event():
     pygame.event.post(pygame.event.Event(START_BTN_DOWN_EVENT))
 
 # Set screen dimensions
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 800, 535
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("30-Second Click Counter Game")
 
@@ -56,19 +58,73 @@ RAINBOW_COLORS = [RED, ORANGE, YELLOW, GREEN, BLUE, PURPLE, MAGENTA, CYAN, PINK,
 title_font = pygame.font.Font(None, 64)
 font = pygame.font.Font(None, 48)
 small_font = pygame.font.Font(None, 36)
+tiny_font = pygame.font.Font(None, 26)
 
 # Game variables
 click_count = 0
 game_active = False
 start_time = 0
 remaining_time = 30
-high_score = 0
+high_scores = []  # ハイスコア上位10位
+
+# スコアボードファイル
+BOARD_FILE = os.path.join(os.path.dirname(__file__), 'board.json')
+BOARD_INIT_FILE = os.path.join(os.path.dirname(__file__), 'board_init.json')
+
+def load_scores():
+    global high_scores
+    # board.json がない、または 24時間以上古い場合は初期データで上書き
+    needs_reset = True
+    if os.path.exists(BOARD_FILE):
+        mtime = os.path.getmtime(BOARD_FILE)
+        if time.time() - mtime < 86400:  # 24時間 = 86400秒
+            needs_reset = False
+    if needs_reset:
+        if os.path.exists(BOARD_FILE):
+            from datetime import datetime
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup = os.path.join(os.path.dirname(__file__), f'board_{ts}.json')
+            shutil.copy2(BOARD_FILE, backup)
+        shutil.copy2(BOARD_INIT_FILE, BOARD_FILE)
+    with open(BOARD_FILE, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    high_scores = sorted(
+        [{'score': e['score'], 'name': e['name']} for e in data.get('board', [])],
+        key=lambda x: x['score'], reverse=True
+    )[:10]
+
+def save_scores():
+    data = {'board': [{'name': hs['name'], 'score': hs['score']} for hs in high_scores]}
+    with open(BOARD_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+load_scores()
 title_angle = 0  # For title animation
 celebration_active = False
 celebration_start_time = 0
 celebration_duration = 3  # seconds
 
 led_updated_time = 30  # Reset for new game
+
+GAME_OVER_COOLDOWN = 5  # ゲームオーバー後スタートボタンが有効になるまでの待機時間（秒）
+game_over_time = None   # ゲームオーバー発生時刻
+input_locked_until = 0  # ネームエントリ後のキー受付禁止終了時刻
+
+# ネームエントリ設定
+NAME_MAX_LEN = 5
+NAME_ENTRY_COLS = 10
+CHARS = list('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789') + ['_', 'RUB', 'END']
+NAME_ENTRY_TIMEOUT = 60  # ネームエントリのタイムアウト時間（秒）
+name_entry_active = False
+ne_cursor = 0
+ne_name = []
+ne_pending_score = 0
+ne_pending_rank = 0
+ne_start_time = 0
+
+CONGRATS_DURATION = 5  # おめでとう画面の表示時間（秒）
+congrats_active = False
+congrats_start_time = 0
 
 # 派手なパーティクルシステム
 class Particle:
@@ -238,7 +294,7 @@ particles = []
 celebration_particles = []
 
 # Button setup
-start_button = pygame.Rect(WIDTH//2 - 100, HEIGHT//2 - 25, 200, 50)
+start_button = pygame.Rect(WIDTH//2 - 100, HEIGHT//2 - 65, 200, 50)
 
 # Game loop
 clock = pygame.time.Clock()
@@ -393,36 +449,65 @@ def draw_game():
                 
                 # お祝いテキストを描画
                 draw_celebration_text("NEW RECORD!", -50)
-                draw_celebration_text(f"{high_score} CLICKS!", 50)
+                draw_celebration_text(f"{high_scores[0]['score']} CLICKS!", 50)
             else:
                 celebration_active = False
                 celebration_particles.clear()
         
-        # グロー効果付きのスタートボタンを描画
-        pulse = (math.sin(time.time() * 3) + 1) / 2  # 0～1の間で脈動
-        glow_radius = int(5 + pulse * 10)  # 5～15の間で変化
-        for i in range(glow_radius, 0, -1):
-            alpha = 100 - i * 5
-            glow_surface = pygame.Surface((start_button.width + i*2, start_button.height + i*2), pygame.SRCALPHA)
-            glow_color = (int(GREEN[0] * (1-pulse) + CYAN[0] * pulse),
-                         int(GREEN[1] * (1-pulse) + CYAN[1] * pulse),
-                         int(GREEN[2] * (1-pulse) + CYAN[2] * pulse), alpha)
-            pygame.draw.rect(glow_surface, glow_color, glow_surface.get_rect(), border_radius=10+i)
-            screen.blit(glow_surface, (start_button.x - i, start_button.y - i))
-        
-        pygame.draw.rect(screen, GREEN, start_button, border_radius=10)
-        draw_text("START", font, BLACK, WIDTH//2, HEIGHT//2)
+        # クールダウン確認
+        can_start = (game_over_time is None or time.time() - game_over_time >= GAME_OVER_COOLDOWN) and time.time() >= input_locked_until
+
+        if can_start:
+            # グロー効果付きのスタートボタンを描画
+            pulse = (math.sin(time.time() * 3) + 1) / 2  # 0～1の間で脈動
+            glow_radius = int(5 + pulse * 10)  # 5～15の間で変化
+            for i in range(glow_radius, 0, -1):
+                alpha = 100 - i * 5
+                glow_surface = pygame.Surface((start_button.width + i*2, start_button.height + i*2), pygame.SRCALPHA)
+                glow_color = (int(GREEN[0] * (1-pulse) + CYAN[0] * pulse),
+                             int(GREEN[1] * (1-pulse) + CYAN[1] * pulse),
+                             int(GREEN[2] * (1-pulse) + CYAN[2] * pulse), alpha)
+                pygame.draw.rect(glow_surface, glow_color, glow_surface.get_rect(), border_radius=10+i)
+                screen.blit(glow_surface, (start_button.x - i, start_button.y - i))
+            pygame.draw.rect(screen, GREEN, start_button, border_radius=10)
+            draw_text("START", font, BLACK, WIDTH//2, HEIGHT//2 - 40)
+        else:
+            # クールダウン中はメッセージを表示
+            draw_text("Just a moment...", font, GRAY, WIDTH//2, HEIGHT//2 - 40)
         
         # 前回のスコアとハイスコアを強調表示
         if click_count > 0:
-            draw_text(f"Last Score: {click_count} clicks", small_font, GOLD, WIDTH//2, HEIGHT//2 + 100)
-        draw_text(f"High Score: {high_score} clicks", small_font, MAGENTA, WIDTH//2, HEIGHT//2 + 150)
+            draw_text(f"Last Score: {click_count} clicks", small_font, GOLD, WIDTH//2, HEIGHT//2 + 20)
+        
+        # TOP 10 スコア表示
+        draw_text("TOP 10", small_font, CYAN, WIDTH//2, HEIGHT//2 + 45)
+        # 2列×5行レイアウト。各列内で rank/name/score のX座標を固定
+        col_origins = [WIDTH // 2 - 230, WIDTH // 2 + 20]  # 各列の左端基準X
+        col_rank_offset  =  0   # 順位
+        col_name_offset  = 38   # 名前（やや広め）
+        col_score_offset = 108  # 点数
+        row_y_start = HEIGHT // 2 + 68
+        row_spacing = 22
+        for rank in range(10):
+            col = rank // 5
+            row = rank % 5
+            ox = col_origins[col]
+            y  = row_y_start + row * row_spacing
+            if rank < len(high_scores):
+                color = GOLD if rank == 0 else WHITE
+                hs = high_scores[rank]
+                draw_text(f"{rank+1}.",      tiny_font, color, ox + col_rank_offset,  y, centered=False)
+                draw_text(hs['name'][:5],    tiny_font, color, ox + col_name_offset,  y, centered=False)
+                draw_text(str(hs['score']),  tiny_font, color, ox + col_score_offset, y, centered=False)
+            else:
+                draw_text(f"{rank+1}.", tiny_font, GRAY, ox + col_rank_offset,  y, centered=False)
+                draw_text("---",        tiny_font, GRAY, ox + col_name_offset,  y, centered=False)
         
         # 遊び方の説明を強調表示
-        instruction_y1 = HEIGHT - 80
-        instruction_y2 = HEIGHT - 40
-        draw_text("How to play: Press the START button and click", small_font, WHITE, WIDTH//2, instruction_y1)
-        draw_text("anywhere on the screen as many times as possible in 30 seconds!", small_font, WHITE, WIDTH//2, instruction_y2)
+        instruction_y1 = HEIGHT - 70
+        instruction_y2 = HEIGHT - 30
+        draw_text("Think you're FAST? Prove it -- SMASH that button!", small_font, ORANGE, WIDTH//2, instruction_y1)
+        draw_text("30 seconds. ALL OUT. How many clicks can YOU crush?!", small_font, CYAN, WIDTH//2, instruction_y2)
     else:
         # ゲームプレイ中の画面
         # 残り時間を表示
@@ -447,11 +532,14 @@ def draw_game():
         
         # 残り時間に応じた励ましメッセージ
         if remaining_time > 20:
-            draw_text("Keep clicking!", small_font, NEON_GREEN, WIDTH//2, HEIGHT - 40)
+            msg = ["GO GO GO!", "SMASH IT!", "DON'T STOP!", "FASTER!!"][int(time.time() * 0.7) % 4]
+            draw_text(msg, small_font, NEON_GREEN, WIDTH//2, HEIGHT - 40)
         elif remaining_time > 10:
-            draw_text("Maintain that pace!", small_font, CYAN, WIDTH//2, HEIGHT - 40)
+            msg = ["YOU'RE ON FIRE!", "KEEP THAT PACE!", "PUSH HARDER!!", "UNSTOPPABLE!"][int(time.time() * 0.8) % 4]
+            draw_text(msg, small_font, CYAN, WIDTH//2, HEIGHT - 40)
         elif remaining_time > 5:
-            draw_text("Time is running out! Hurry!", small_font, ORANGE, WIDTH//2, HEIGHT - 40)
+            msg = ["ALMOST THERE!!", "GO FULL POWER!!", "NO MERCY!!", "GIVE IT ALL!!"][int(time.time() * 1.2) % 4]
+            draw_text(msg, small_font, ORANGE, WIDTH//2, HEIGHT - 40)
         else:
             # 残り時間が少ない場合は点滅効果
             if int(time.time() * 4) % 2:
@@ -468,6 +556,93 @@ def draw_game():
                 led_updated_time = 5
                 # コントローラLEDパターン変更命令
                 ser.write(json.dumps({"led": {"pattern": 3}}).encode('utf-8') + b'\n')
+
+def draw_congrats():
+    screen.fill(BLACK)
+
+    elapsed = time.time() - congrats_start_time
+    color_idx = int(elapsed * 10) % len(RAINBOW_COLORS)
+
+    rank_suffix = {1: 'ST', 2: 'ND', 3: 'RD'}.get(ne_pending_rank, 'TH')
+    line1 = "CONGRATULATIONS!"
+    line2 = f"YOU RANKED  #{ne_pending_rank}{rank_suffix}!"
+    line3 = f"Score: {ne_pending_score}"
+
+    # スケールパルス
+    scale = 1.0 + math.sin(elapsed * 4) * 0.08
+
+    for text, y, base_font in [
+        (line1, HEIGHT // 2 - 80, title_font),
+        (line2, HEIGHT // 2,      title_font),
+        (line3, HEIGHT // 2 + 80, font),
+    ]:
+        surf = base_font.render(text, True, RAINBOW_COLORS[color_idx])
+        sw = int(surf.get_width() * scale)
+        sh = int(surf.get_height() * scale)
+        surf = pygame.transform.scale(surf, (sw, sh))
+        rect = surf.get_rect(center=(WIDTH // 2, y))
+        screen.blit(surf, rect)
+        color_idx = (color_idx + 3) % len(RAINBOW_COLORS)
+
+    # ネームエントリ誘導メッセージ
+    draw_text("Get ready to enter your name!", small_font, GRAY, WIDTH // 2, HEIGHT - 50)
+
+def draw_name_entry():
+    screen.fill(BLACK)
+
+    # ヘッダー
+    draw_gradient_text("ENTER YOUR NAME", title_font, GOLD, MAGENTA, WIDTH//2, 45, title_angle)
+    draw_text(f"Score: {ne_pending_score}", font, WHITE, WIDTH//2, 105)
+
+    # 入力済み名前スロット表示
+    typed = ''.join(ne_name) if ne_name else ''
+    name_display = f'[ {typed}{"_" * (NAME_MAX_LEN - len(typed))} ]'
+    draw_text(name_display, font, CYAN, WIDTH//2, 155)
+
+    # 操作説明
+    draw_text("MAIN: next char   START: select   [END]: confirm", small_font, GRAY, WIDTH//2, 198)
+
+    # タイムアウトカウントダウン
+    ne_remaining = NAME_ENTRY_TIMEOUT - (time.time() - ne_start_time)
+    timeout_color = RED if ne_remaining <= 10 else GRAY
+    draw_text(f"{int(ne_remaining) + 1}s", small_font, timeout_color, WIDTH - 80, 20, centered=False)
+
+    # 文字グリッド
+    cell_w = 60
+    cell_h = 42
+    grid_x = (WIDTH - NAME_ENTRY_COLS * cell_w) // 2
+    grid_y = 225
+
+    for idx, ch in enumerate(CHARS):
+        col = idx % NAME_ENTRY_COLS
+        row = idx // NAME_ENTRY_COLS
+        cx = grid_x + col * cell_w + cell_w // 2
+        cy = grid_y + row * cell_h + cell_h // 2
+
+        color = YELLOW if idx == ne_cursor else WHITE
+        label = ch
+        draw_text(label, small_font, color, cx, cy)
+
+        # カーソル（四隅をかぎ括弧で表示）
+        if idx == ne_cursor:
+            bx = grid_x + col * cell_w + 2
+            by = grid_y + row * cell_h + 2
+            bw = cell_w - 4
+            bh = cell_h - 4
+            b = 8   # かぎ括弧の長さ
+            t = 2   # 線の太さ
+            # 左上
+            pygame.draw.line(screen, CYAN, (bx, by + b), (bx, by), t)
+            pygame.draw.line(screen, CYAN, (bx, by), (bx + b, by), t)
+            # 右上
+            pygame.draw.line(screen, CYAN, (bx + bw, by), (bx + bw - b, by), t)
+            pygame.draw.line(screen, CYAN, (bx + bw, by), (bx + bw, by + b), t)
+            # 左下
+            pygame.draw.line(screen, CYAN, (bx, by + bh - b), (bx, by + bh), t)
+            pygame.draw.line(screen, CYAN, (bx, by + bh), (bx + b, by + bh), t)
+            # 右下
+            pygame.draw.line(screen, CYAN, (bx + bw, by + bh - b), (bx + bw, by + bh), t)
+            pygame.draw.line(screen, CYAN, (bx + bw, by + bh), (bx + bw - b, by + bh), t)
 
 running = True
 while running:
@@ -498,55 +673,133 @@ while running:
             remaining_time = 0
             # コントローラ LED パターンをデモモードに変更
             ser.write(json.dumps({"led": {"pattern": 0}}).encode('utf-8') + b'\n')
-            # ハイスコアの更新とお祝いエフェクトの発動
-            if click_count > high_score:
-                high_score = click_count
-                create_celebration_effect()
+            # ハイスコア入賞判定 → お祝いメッセージ経由でネームエントリへ
+            qualifies = (len(high_scores) < 10 or click_count > high_scores[-1]['score'])
+            if qualifies:
+                ne_pending_score = click_count
+                ne_cursor = 0
+                ne_name.clear()
+                # 何位相当かを計算
+                rank = sum(1 for hs in high_scores if hs['score'] > click_count)
+                ne_pending_rank = rank + 1
+                congrats_active = True
+                congrats_start_time = current_time
+            else:
+                game_over_time = current_time
 
     # イベント処理
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-        # 物理ボタン（pi pico）イベントの処理
-        elif event.type == MAIN_BTN_DOWN_EVENT:
-            if game_active:
-                # ゲームプレイ中のクリック処理
-                click_count += 1
-                create_particles(mouse_pos[0], mouse_pos[1])  # クリック位置でパーティクルを作成
-        
-        elif event.type == START_BTN_DOWN_EVENT:
-            if not game_active:
-                # ゲーム開始
-                game_active = True
-                click_count = 0
-                start_time = time.time()
-                remaining_time = 30
-                led_updated_time = 30
-                particles.clear()  # 既存のパーティクルをクリア
-                mouse_pos = (WIDTH/2, HEIGHT/2) # とにかく座標を設定
-                # コントローラLEDパターン変更命令
-                ser.write(json.dumps({"led": {"pattern": 1}}).encode('utf-8') + b'\n')
-        # 物理ボタン処理終わり
+        elif name_entry_active:
+            # ネームエントリ中のイベント処理
+            if event.type == MAIN_BTN_DOWN_EVENT or (
+                event.type == pygame.KEYDOWN and event.key in (pygame.K_RIGHT, pygame.K_DOWN)
+            ):
+                ne_cursor = (ne_cursor + 1) % len(CHARS)
+            elif event.type == pygame.KEYDOWN and event.key in (pygame.K_LEFT, pygame.K_UP):
+                ne_cursor = (ne_cursor - 1) % len(CHARS)
+            elif event.type == START_BTN_DOWN_EVENT or (
+                event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN
+            ):
+                ch = CHARS[ne_cursor]
+                if ch == 'END':
+                    name = ''.join(ne_name).strip() or 'ANON'
+                    is_new_top = not high_scores or ne_pending_score > high_scores[0]['score']
+                    high_scores.append({'score': ne_pending_score, 'name': name})
+                    high_scores.sort(key=lambda x: x['score'], reverse=True)
+                    del high_scores[10:]
+                    save_scores()
+                    name_entry_active = False
+                    game_over_time = time.time()
+                    input_locked_until = time.time() + 2
+                    if is_new_top:
+                        create_celebration_effect()
+                elif ch == 'RUB':
+                    if ne_name:
+                        ne_name.pop()
+                elif len(ne_name) < NAME_MAX_LEN:
+                    ne_name.append(' ' if ch == '_' else ch)
+                    if len(ne_name) >= NAME_MAX_LEN:
+                        ne_cursor = CHARS.index('END')
 
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            mouse_pos = pygame.mouse.get_pos()
-            
-            if game_active:
-                # ゲームプレイ中のクリック処理
-                click_count += 1
-                create_particles(mouse_pos[0], mouse_pos[1])  # クリック位置でパーティクルを作成
-            elif start_button.collidepoint(mouse_pos):
-                # ゲーム開始
-                game_active = True
-                click_count = 0
-                start_time = time.time()
-                remaining_time = 30
-                particles.clear()  # 既存のパーティクルをクリア
+        else:
+            # 物理ボタン（pi pico）イベントの処理
+            if event.type == MAIN_BTN_DOWN_EVENT:
+                if game_active:
+                    # ゲームプレイ中のクリック処理
+                    click_count += 1
+                    create_particles(mouse_pos[0], mouse_pos[1])  # クリック位置でパーティクルを作成
+                elif (game_over_time is None or time.time() - game_over_time >= GAME_OVER_COOLDOWN) and time.time() >= input_locked_until:
+                    # ゲーム開始
+                    game_active = True
+                    click_count = 0
+                    start_time = time.time()
+                    remaining_time = 30
+                    led_updated_time = 30
+                    particles.clear()  # 既存のパーティクルをクリア
+                    mouse_pos = (WIDTH/2, HEIGHT/2)  # とにかく座標を設定
+                    # コントローラLEDパターン変更命令
+                    ser.write(json.dumps({"led": {"pattern": 1}}).encode('utf-8') + b'\n')
+
+            elif event.type == START_BTN_DOWN_EVENT:
+                if not game_active and (game_over_time is None or time.time() - game_over_time >= GAME_OVER_COOLDOWN) and time.time() >= input_locked_until:
+                    # ゲーム開始
+                    game_active = True
+                    click_count = 0
+                    start_time = time.time()
+                    remaining_time = 30
+                    led_updated_time = 30
+                    particles.clear()  # 既存のパーティクルをクリア
+                    mouse_pos = (WIDTH/2, HEIGHT/2)  # とにかく座標を設定
+                    # コントローラLEDパターン変更命令
+                    ser.write(json.dumps({"led": {"pattern": 1}}).encode('utf-8') + b'\n')
+            # 物理ボタン処理終わり
+
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = pygame.mouse.get_pos()
+
+                if game_active:
+                    # ゲームプレイ中のクリック処理
+                    click_count += 1
+                    create_particles(mouse_pos[0], mouse_pos[1])  # クリック位置でパーティクルを作成
+                elif start_button.collidepoint(mouse_pos) and (game_over_time is None or time.time() - game_over_time >= GAME_OVER_COOLDOWN) and time.time() >= input_locked_until:
+                    # ゲーム開始
+                    game_active = True
+                    click_count = 0
+                    start_time = time.time()
+                    remaining_time = 30
+                    particles.clear()  # 既存のパーティクルをクリア
     
     # ゲーム画面の描画
-    draw_game()
-    
+    if congrats_active:
+        if time.time() - congrats_start_time >= CONGRATS_DURATION:
+            congrats_active = False
+            name_entry_active = True
+            ne_start_time = time.time()
+            ne_start_time = time.time()
+        else:
+            draw_congrats()
+    elif name_entry_active:
+        # タイムアウト処理
+        if time.time() - ne_start_time >= NAME_ENTRY_TIMEOUT:
+            name = ''.join(ne_name).strip() or 'ANON'
+            is_new_top = not high_scores or ne_pending_score > high_scores[0]['score']
+            high_scores.append({'score': ne_pending_score, 'name': name})
+            high_scores.sort(key=lambda x: x['score'], reverse=True)
+            del high_scores[10:]
+            save_scores()
+            name_entry_active = False
+            game_over_time = time.time()
+            input_locked_until = time.time() + 2
+            if is_new_top:
+                create_celebration_effect()
+        else:
+            draw_name_entry()
+    else:
+        draw_game()
+
     pygame.display.flip()
     clock.tick(60)  # FPSの設定
 
